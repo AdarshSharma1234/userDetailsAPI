@@ -2,10 +2,39 @@ const express = require('express');
 const router = express.Router();
 const UserDetails = require('../models/userDetails');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const path = require('path');
+
 // Create a new user
-router.post('/users', async (req, res) => {
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, 'uploads/');  // folder where files will be stored
+    },
+    filename: function (req, file, cb) {
+        cb(null, Date.now() + path.extname(file.originalname));  // create unique file name
+    }
+});
+
+const upload = multer({ storage: storage });
+
+// Create a new user with an image
+router.post('/users', upload.single('image'), async (req, res) => {
     try {
-        const user = new UserDetails(req.body);
+        // req.file contains the uploaded file details
+        const { userName, age, email, password } = req.body;
+        const user = new UserDetails({
+            userName,
+            age,
+            email,
+            password,
+            image: {
+                filename: req.file.filename,
+                path: req.file.path
+            }
+        });
+
+        //console.log(user.image.filename);return false
+        
         await user.save();
         res.status(201).send(user);
     } catch (error) {
@@ -30,24 +59,12 @@ router.post('/login', async (req, res) => {
 
         // Generate a token
         const token = jwt.sign({ _id: user._id }, 'ANGULAR', { expiresIn: '1h' });
-        
+
         res.status(200).send({ message: 'Login successful', user, token });
     } catch (error) {
         res.status(500).send(error);
     }
 });
-
-
-router.post('/users', async (res, req) => {
-    try {
-        const user = new UserDetails(req.body)
-        await user.save()
-        res.status(201).send(user)
-    } catch (error) {
-        res.status(400).send(error)
-
-    }
-})
 
 
 // Read all users
@@ -75,9 +92,19 @@ router.get('/users/:id', async (req, res) => {
 });
 
 // Update a user by ID
-router.put('/users/:id', async (req, res) => {
+router.put('/users/:id', upload.single('image'), async (req, res) => {
     try {
-        const user = await UserDetails.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+        const updates = req.body;
+        if (req.file) {
+            updates.image = {
+                filename: req.file.filename,
+                path: req.file.path
+            };
+        }
+        const user = await UserDetails.findByIdAndUpdate(req.params.id, updates, {
+            new: true,
+            runValidators: true
+        });
         if (!user) {
             return res.status(404).send();
         }
